@@ -2,18 +2,53 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { parseVideoLink, getYoutubeThumbnail } from '../utils/linkParser';
-import {
-  getPrivateItems,
-  addPrivateItem,
-  updatePrivateItem,
-  deletePrivateItem,
-} from '../utils/privateSpace';
+import { db } from '../firebase/config';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  onSnapshot, 
+  serverTimestamp 
+} from 'firebase/firestore';
 
 const TYPES = [
   { value: 'video', label: 'Video link' },
   { value: 'drive', label: 'Drive / file link' },
   { value: 'topic', label: 'Topic / note (no link)' },
 ];
+
+// Helper function to resolve YouTube Video ID or Playlist ID
+function resolveVideoInfo(url) {
+  if (!url) return null;
+  const parsed = parseVideoLink(url);
+  
+  // Single Video Match
+  if (parsed?.sourceType === 'youtube' && parsed.videoId) {
+    return {
+      videoId: parsed.videoId,
+      type: 'video',
+      thumb: getYoutubeThumbnail(parsed.videoId),
+      watchUrl: `/video/${parsed.videoId}`
+    };
+  }
+
+  // Playlist Link Match
+  const playlistMatch = url.match(/[?&]list=([^#&]+)/);
+  if (playlistMatch && playlistMatch[1]) {
+    const listId = playlistMatch[1];
+    return {
+      playlistId: listId,
+      type: 'playlist',
+      thumb: `https://img.youtube.com/vi_webp/default.webp`, // Fallback playlist indicator
+      watchUrl: `/video/${listId}?isPlaylist=true`
+    };
+  }
+
+  return null;
+}
 
 function ItemForm({ initial, onSubmit, onCancel, submitLabel }) {
   const [title, setTitle] = useState(initial?.title || '');
@@ -28,12 +63,11 @@ function ItemForm({ initial, onSubmit, onCancel, submitLabel }) {
       return;
     }
     if (type !== 'topic' && !url.trim()) {
-      setError('Please add a link, or switch to "Topic / note" if there isn\u2019t one.');
+      setError('Please add a link, or switch to "Topic / note" if there isn’t one.');
       return;
     }
     if (url.trim()) {
       try {
-        // eslint-disable-next-line no-new
         new URL(url.trim());
       } catch {
         setError("That doesn't look like a valid link.");
@@ -47,7 +81,11 @@ function ItemForm({ initial, onSubmit, onCancel, submitLabel }) {
   return (
     <form className="add-item-form" onSubmit={handleSubmit}>
       {error && <p className="form-error">{error}</p>}
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+      <input 
+        value={title} 
+        onChange={(e) => setTitle(e.target.value)} 
+        placeholder="Title" 
+      />
       <select value={type} onChange={(e) => setType(e.target.value)}>
         {TYPES.map((t) => (
           <option key={t.value} value={t.value}>
@@ -60,7 +98,7 @@ function ItemForm({ initial, onSubmit, onCancel, submitLabel }) {
           type="url"
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder={type === 'video' ? 'YouTube (or any video) link' : 'Google Drive / file link'}
+          placeholder={type === 'video' ? 'YouTube (or playlist) link' : 'Google Drive / file link'}
         />
       )}
       <div className="modal-actions">
@@ -77,9 +115,7 @@ function ItemForm({ initial, onSubmit, onCancel, submitLabel }) {
 
 function PrivateItemCard({ item, onEdit, onDelete }) {
   const [editing, setEditing] = useState(false);
-  const parsed = item.type === 'video' && item.url ? parseVideoLink(item.url) : null;
-  const thumb = parsed?.sourceType === 'youtube' && parsed.videoId ? getYoutubeThumbnail(parsed.videoId) : null;
-  const isInAppPlayable = parsed?.sourceType === 'youtube' && parsed.videoId;
+  const videoInfo = item.type === 'video' ? resolveVideoInfo(item.url) : null;
 
   if (editing) {
     return (
@@ -110,21 +146,34 @@ function PrivateItemCard({ item, onEdit, onDelete }) {
         </button>
       </div>
       <div className="section-card-thumb">
-        {thumb ? <img src={thumb} alt="" /> : item.type === 'drive' ? '🗂️' : item.type === 'topic' ? '🧠' : '🎬'}
+        {videoInfo?.thumb ? (
+          <img src={videoInfo.thumb} alt="" />
+        ) : item.type === 'drive' ? (
+          '🗂️'
+        ) : item.type === 'topic' ? (
+          '🧠'
+        ) : (
+          '🎬'
+        )}
       </div>
       <div className="section-card-body">
         <h3>{item.title}</h3>
         <p className="section-meta">{TYPES.find((t) => t.value === item.type)?.label}</p>
-        {item.url &&
-          (isInAppPlayable ? (
-            <Link to={`/video/${parsed.videoId}?title=${encodeURIComponent(item.title)}`} className="back-link">
+        
+        {item.url && (
+          videoInfo ? (
+            <Link 
+              to={`${videoInfo.watchUrl}&title=${encodeURIComponent(item.title)}`} 
+              className="back-link"
+            >
               ▶ Watch in-app
             </Link>
           ) : (
             <a href={item.url} target="_blank" rel="noreferrer" className="back-link">
               Open link ↗
             </a>
-          ))}
+          )
+        )}
       </div>
     </div>
   );
@@ -135,8 +184,20 @@ export default function PrivateSpacePage() {
   const [items, setItems] = useState([]);
   const [showAddForm, setShowAddForm] = useState(false);
 
+  // Sync real-time data from Firestore /users/{uid}/personalSpace
   useEffect(() => {
-    if (currentUser) setItems(getPrivateItems(currentUser.uid));
+    if (!currentUser) return;
+    
+    const q = query(collection(db, 'users', currentUser.uid, 'personalSpace'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const docs = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setItems(docs);
+    });
+
+    return () => unsubscribe();
   }, [currentUser]);
 
   if (!currentUser) {
@@ -149,25 +210,34 @@ export default function PrivateSpacePage() {
     );
   }
 
-  function refresh() {
-    setItems(getPrivateItems(currentUser.uid));
+  async function handleAdd(data) {
+    try {
+      await addDoc(collection(db, 'users', currentUser.uid, 'personalSpace'), {
+        ...data,
+        createdAt: serverTimestamp(),
+      });
+      setShowAddForm(false);
+    } catch (err) {
+      console.error('Error adding item to Firestore:', err);
+    }
   }
 
-  function handleAdd(data) {
-    addPrivateItem(currentUser.uid, data);
-    setShowAddForm(false);
-    refresh();
+  async function handleEdit(id, updates) {
+    try {
+      const itemRef = doc(db, 'users', currentUser.uid, 'personalSpace', id);
+      await updateDoc(itemRef, updates);
+    } catch (err) {
+      console.error('Error updating item:', err);
+    }
   }
 
-  function handleEdit(id, updates) {
-    updatePrivateItem(currentUser.uid, id, updates);
-    refresh();
-  }
-
-  function handleDelete(id) {
+  async function handleDelete(id) {
     if (!window.confirm('Remove this from your Private Space?')) return;
-    deletePrivateItem(currentUser.uid, id);
-    refresh();
+    try {
+      await deleteDoc(doc(db, 'users', currentUser.uid, 'personalSpace', id));
+    } catch (err) {
+      console.error('Error deleting item:', err);
+    }
   }
 
   return (
@@ -176,8 +246,7 @@ export default function PrivateSpacePage() {
         <div>
           <h1>🎓 My Private Space</h1>
           <p className="empty-state">
-            Your own videos, Drive links, and topics — saved only on this device/browser, never sent
-            to a server.
+            Your own videos, Drive links, and topics — synced safely to your personal account.
           </p>
         </div>
         <button type="button" className="create-section-btn" onClick={() => setShowAddForm((s) => !s)}>
