@@ -1,11 +1,13 @@
-// The admin email is set via env for the client-side UI check. The
-// SAME address must also be hardcoded into firestore.rules (rules
-// files can't read .env — see the ADMIN_EMAIL constant near the top
-// of firestore.rules) — if you change one, change both, or admin
-// writes will start failing against the database even though the UI
-// still shows the Admin link.
-export const ADMIN_EMAIL = import.meta.env.VITE_ADMIN_EMAIL || '';
+// The admin emails are set via env (comma-separated if multiple).
+// The SAME addresses must also be set inside firestore.rules
+// (e.g. dreamcanvasacademy@gmail.com and adnansite01@gmail.com).
+
+const ADMIN_EMAILS_RAW = import.meta.env.VITE_ADMIN_EMAIL || 'dreamcanvasacademy@gmail.com,adnansite01@gmail.com';
+
+// Split the comma-separated email list and trim any extra spaces
+export const ADMIN_EMAILS = ADMIN_EMAILS_RAW.split(',').map((e) => e.trim().toLowerCase());
 
 export function isAdminUser(user) {
-  return Boolean(user?.email) && Boolean(ADMIN_EMAIL) && user.email === ADMIN_EMAIL;
+  if (!user?.email) return false;
+  return ADMIN_EMAILS.includes(user.email.toLowerCase());
 }
