@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Single admin account, matched by provider-verified email on the
+    // auth token (Google Sign-In is the only auth method, so this is
+    // safe without a separate custom-claims setup). MUST match
+    // VITE_ADMIN_EMAIL in your .env exactly — this file can't read
+    // env vars, so the two have to be kept in sync by hand.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'dreamcanvasacademy@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+
+    // Each user's own profile + notes. Only that user (or the admin)
+    // can read or write it.
+    match /users/{userId} {
+      allow read, write: if request.auth != null
+        && (request.auth.uid == userId || isAdmin());
+
+      match /notes/{noteId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /watchProgress/{videoId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Sections (the public catalog) and their roadmap items / resources.
+    match /sections/{sectionId} {
+      allow read: if true;
+      allow create: if request.auth != null;
+      // Only the section's creator or the admin can edit/delete the
+      // section itself (title, description, pin, order, category…).
+      allow update, delete: if request.auth != null
+        && (request.auth.uid == resource.data.createdBy || isAdmin());
+
+      // Access-code hash for paid sections lives here, NOT on the
+      // public section doc above, so it isn't bundled into every
+      // catalog read. Still not bulletproof — anyone signed in can
+      // read the hash and attempt to crack it offline; a real
+      // server-side check would need a Cloud Function, which isn't
+      // available on the free tier here. See PROGRESS.md.
+      match /private/access {
+        allow read: if request.auth != null;
+        allow write: if isAdmin();
+      }
+
+      match /items/{itemId} {
+        // Free sections stay open to everyone. Paid sections require
+        // at least being signed in to read their roadmap at all —
+        // the access-code check itself is a client-side UX gate on
+        // top of this, not an additional server-side rule (see note
+        // above on why that's the honest limit here).
+        allow read: if get(/databases/$(database)/documents/sections/$(sectionId)).data.isPaid != true
+          || request.auth != null;
+        allow create: if request.auth != null;
+        // Only the person who added an item (or the admin) can edit
+        // or remove it — keeps "anyone can contribute" while
+        // preventing users from editing/deleting each other's entries.
+        allow update, delete: if request.auth != null
+          && (request.auth.uid == resource.data.addedBy || isAdmin());
+      }
+
+      match /resources/{resourceId} {
+        allow read: if get(/databases/$(database)/documents/sections/$(sectionId)).data.isPaid != true
+          || request.auth != null;
+        allow create: if request.auth != null;
+        allow update, delete: if request.auth != null
+          && (request.auth.uid == resource.data.addedBy || isAdmin());
+      }
+    }
+
+    // Everything else is denied by default — no catch-all rule.
+  }
+}
