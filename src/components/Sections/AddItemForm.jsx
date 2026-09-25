@@ -3,15 +3,21 @@ import { useAuth } from '../../context/AuthContext';
 import { parseVideoLink, SOURCE_LABELS, getYoutubeThumbnail } from '../../utils/linkParser';
 import { addSectionItem } from '../../firebase/firestoreWrites';
 
+// Admin-only, on purpose: DeshiEdu moved from "any signed-in user can
+// contribute a link" to "admin curates, everyone else watches" — see
+// PROGRESS.md for the reasoning and what that changes. Gating here
+// (returning null outright, not a message) means this form is safe to
+// render unconditionally from any page without a caller forgetting to
+// check first.
 export default function AddItemForm({ sectionId, currentThumbnailUrl, onAdded }) {
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  if (!currentUser) {
-    return <p className="empty-state">Sign in to add a link to this roadmap.</p>;
+  if (!isAdmin || !currentUser) {
+    return null;
   }
 
   // Live preview as the user types/pastes — this is the "client-side

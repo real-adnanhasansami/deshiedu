@@ -7,9 +7,14 @@ import { useEffect, useRef, useState } from 'react';
 // suppressing end-of-video suggestions from the *same* channel;
 // this is as close to distraction-free as the embed API allows.
 //
+// Also plays whole playlists: pass `playlistId` instead of
+// `youtubeId` and the player loads it via playerVars.listType/list.
+// Resume-by-timestamp is skipped in playlist mode — a single saved
+// timestamp doesn't map to "which video in the playlist" meaningfully.
+//
 // TODO (later task): support non-YouTube sourceTypes (Udemy/Coursera
 // don't offer embeddable players, so those stay external links from
-// RoadmapItem — this component only ever receives a YouTube id).
+// RoadmapItem — this component only ever receives YouTube ids).
 
 let apiLoadPromise = null;
 function loadYouTubeIframeAPI() {
@@ -39,7 +44,7 @@ const PLAYING = 1;
 const MIN_RESUME_SECONDS = 5;
 const PROGRESS_SAVE_INTERVAL_MS = 8000;
 
-export default function VideoPlayer({ youtubeId, resumeSeconds = 0, onProgress }) {
+export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, onProgress }) {
   const containerRef = useRef(null);
   const playerRef = useRef(null);
   const progressTimerRef = useRef(null);
@@ -50,8 +55,10 @@ export default function VideoPlayer({ youtubeId, resumeSeconds = 0, onProgress }
   resumeSecondsRef.current = resumeSeconds;
   onProgressRef.current = onProgress;
 
+  const hasSomethingToPlay = Boolean(youtubeId) || Boolean(playlistId);
+
   useEffect(() => {
-    if (!youtubeId || !containerRef.current) return undefined;
+    if (!hasSomethingToPlay || !containerRef.current) return undefined;
     let cancelled = false;
     setLoaded(false);
 
@@ -59,23 +66,25 @@ export default function VideoPlayer({ youtubeId, resumeSeconds = 0, onProgress }
       if (cancelled || !containerRef.current) return;
 
       playerRef.current = new YT.Player(containerRef.current, {
-        videoId: youtubeId,
+        videoId: youtubeId || undefined,
         host: 'https://www.youtube-nocookie.com',
         playerVars: {
           rel: 0,
           modestbranding: 1,
           iv_load_policy: 3,
           playsinline: 1,
+          ...(playlistId ? { listType: 'playlist', list: playlistId } : {}),
         },
         events: {
           onReady: (event) => {
             if (cancelled) return;
             setLoaded(true);
-            if (resumeSecondsRef.current > MIN_RESUME_SECONDS) {
+            if (!playlistId && resumeSecondsRef.current > MIN_RESUME_SECONDS) {
               event.target.seekTo(resumeSecondsRef.current, true);
             }
           },
           onStateChange: (event) => {
+            if (playlistId) return; // no meaningful single-video progress to save
             clearInterval(progressTimerRef.current);
             if (event.data === PLAYING) {
               progressTimerRef.current = setInterval(() => {
@@ -101,12 +110,12 @@ export default function VideoPlayer({ youtubeId, resumeSeconds = 0, onProgress }
       }
       playerRef.current = null;
     };
-    // Only re-create the player when the video itself changes —
+    // Only re-create the player when the video/playlist itself changes —
     // resumeSeconds/onProgress are read via refs/closures above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [youtubeId]);
+  }, [youtubeId, playlistId]);
 
-  if (!youtubeId) {
+  if (!hasSomethingToPlay) {
     return <div className="video-wrapper empty">No video selected</div>;
   }
 

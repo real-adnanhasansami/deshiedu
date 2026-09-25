@@ -2,15 +2,19 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Single admin account, matched by provider-verified email on the
-    // auth token (Google Sign-In is the only auth method, so this is
-    // safe without a separate custom-claims setup). MUST match
-    // VITE_ADMIN_EMAIL in your .env exactly — this file can't read
-    // env vars, so the two have to be kept in sync by hand.
+    // Admin accounts, matched by provider-verified email on the auth
+    // token (Google Sign-In is the only auth method, so this is safe
+    // without a separate custom-claims setup). This list MUST exactly
+    // match VITE_ADMIN_EMAILS in your .env — rules files can't read
+    // env vars, so the two have to be kept in sync by hand whenever
+    // you add or remove an admin.
     function isAdmin() {
       return request.auth != null
-        && request.auth.token.email == 'dreamcanvasacademy@gmail.com'
-        && request.auth.token.email_verified == true;
+        && request.auth.token.email_verified == true
+        && request.auth.token.email in [
+          'dreamcanvasacademy@gmail.com',
+          'adnansite01@gmail.com'
+        ];
     }
 
     // Each user's own profile + notes. Only that user (or the admin)
@@ -24,6 +28,10 @@ service cloud.firestore {
       }
 
       match /watchProgress/{videoId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+
+      match /personalSpace/{itemId} {
         allow read, write: if request.auth != null && request.auth.uid == userId;
       }
     }
@@ -56,10 +64,12 @@ service cloud.firestore {
         // above on why that's the honest limit here).
         allow read: if get(/databases/$(database)/documents/sections/$(sectionId)).data.isPaid != true
           || request.auth != null;
-        allow create: if request.auth != null;
-        // Only the person who added an item (or the admin) can edit
-        // or remove it — keeps "anyone can contribute" while
-        // preventing users from editing/deleting each other's entries.
+        // Admin-only creation now (DeshiEdu moved from open
+        // contribution to admin-curated content). update/delete stay
+        // open to whoever originally added an item, so anything
+        // contributed under the old model can still be managed by its
+        // creator — just nothing new can be added except by the admin.
+        allow create: if isAdmin();
         allow update, delete: if request.auth != null
           && (request.auth.uid == resource.data.addedBy || isAdmin());
       }
@@ -67,7 +77,7 @@ service cloud.firestore {
       match /resources/{resourceId} {
         allow read: if get(/databases/$(database)/documents/sections/$(sectionId)).data.isPaid != true
           || request.auth != null;
-        allow create: if request.auth != null;
+        allow create: if isAdmin();
         allow update, delete: if request.auth != null
           && (request.auth.uid == resource.data.addedBy || isAdmin());
       }

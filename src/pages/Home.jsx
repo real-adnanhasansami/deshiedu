@@ -17,7 +17,7 @@ function sortForDisplay(list) {
 }
 
 export default function Home() {
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [sections, setSections] = useState([]);
   const [status, setStatus] = useState('loading');
@@ -77,7 +77,7 @@ export default function Home() {
                 : 'Browse curated learning roadmaps'}
             </p>
           </div>
-          {currentUser && (
+          {isAdmin && (
             <button type="button" className="create-section-btn" onClick={() => setCreateOpen(true)}>
               + Create Section
             </button>
@@ -98,12 +98,12 @@ export default function Home() {
       {status === 'ready' && !hasAnySections && (
         <div className="empty-catalog">
           <p>No sections yet — be the first to start a roadmap!</p>
-          {currentUser ? (
+          {isAdmin ? (
             <button type="button" className="create-section-btn" onClick={() => setCreateOpen(true)}>
               + Create Your First Section
             </button>
           ) : (
-            <p className="empty-state">Sign in to create the first section.</p>
+            <p className="empty-state">{!currentUser && "Sign in to view sections."}</p>
           )}
         </div>
       )}

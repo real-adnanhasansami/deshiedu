@@ -37,7 +37,7 @@ export default function SectionCard({
       return;
     }
     try {
-      await deleteSection(section.id);
+      await deleteSection(section.id, { isPaid: section.isPaid });
       onChanged?.();
     } catch (err) {
       console.error('Failed to delete section:', err);

@@ -11,26 +11,46 @@ import { fetchWatchProgress, saveWatchProgress } from '../firebase/watchProgress
 const MIN_SECONDS_BETWEEN_SAVES = 4;
 
 export default function PlayerPage() {
-  const { videoId } = useParams();
+  const { videoId: rawParam } = useParams();
   const { currentUser } = useAuth();
   const [searchParams] = useSearchParams();
   const title = searchParams.get('title');
   const sectionId = searchParams.get('section');
   const sectionTitle = searchParams.get('sectionTitle');
+  const playlistId = searchParams.get('playlistId');
+
+  // Safety net: react-router's useParams() already stops at the `?`,
+  // so rawParam shouldn't ever contain a stray "&..." fragment — but
+  // if some future caller ever builds a malformed link (or a browser
+  // extension mangles the URL), split defensively rather than pass a
+  // garbage id straight to the YouTube embed and crash the player.
+  const cleanId = (rawParam || '').split('&')[0].split('?')[0];
+
+  // /video/playlist?playlistId=... is how playlist-only links route
+  // (see RoadmapItem) — there's no single videoId to key notes/resume
+  // off in that case, so treat "playlist" as a sentinel rather than a
+  // real video id.
+  const isPlaylistMode = cleanId === 'playlist' && Boolean(playlistId);
+  const videoId = isPlaylistMode ? null : cleanId;
+  // Notes still work in playlist mode, just keyed to the playlist
+  // itself rather than any one video in it.
+  const notesKey = isPlaylistMode ? `playlist_${playlistId}` : videoId;
+
   const [resumeSeconds, setResumeSeconds] = useState(0);
   const lastSavedRef = useRef(0);
 
   useEffect(() => {
     setResumeSeconds(0);
     lastSavedRef.current = 0;
-    if (!currentUser || !videoId) return;
+    // Resume/progress tracking is single-video only — see VideoPlayer.
+    if (!currentUser || !videoId || isPlaylistMode) return;
     fetchWatchProgress(currentUser.uid, videoId)
       .then(setResumeSeconds)
       .catch((err) => console.error('Failed to load watch progress:', err));
-  }, [currentUser, videoId]);
+  }, [currentUser, videoId, isPlaylistMode]);
 
   function handleProgress(seconds) {
-    if (!currentUser || !videoId) return;
+    if (!currentUser || !videoId || isPlaylistMode) return;
     if (Math.abs(seconds - lastSavedRef.current) < MIN_SECONDS_BETWEEN_SAVES) return;
     lastSavedRef.current = seconds;
     saveWatchProgress(currentUser.uid, videoId, seconds).catch((err) =>
@@ -47,8 +67,13 @@ export default function PlayerPage() {
       )}
       {title && <h2 className="player-title">{title}</h2>}
       <div className="player-page">
-        <VideoPlayer youtubeId={videoId} resumeSeconds={resumeSeconds} onProgress={handleProgress} />
-        <NotesPanel videoId={videoId} videoTitle={title} />
+        <VideoPlayer
+          youtubeId={videoId}
+          playlistId={isPlaylistMode ? playlistId : null}
+          resumeSeconds={resumeSeconds}
+          onProgress={handleProgress}
+        />
+        <NotesPanel videoId={notesKey} videoTitle={title} />
       </div>
     </div>
   );

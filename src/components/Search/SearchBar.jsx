@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useCatalogSearch } from '../../hooks/useCatalogSearch';
+import { parseVideoLink } from '../../utils/linkParser';
 
 export default function SearchBar({ sections }) {
   const [query, setQuery] = useState('');
@@ -47,20 +48,19 @@ export default function SearchBar({ sections }) {
           {itemResults.length > 0 && (
             <>
               <p className="search-group-label">Videos &amp; Links</p>
-              {itemResults.map((item) => (
-                <Link
-                  key={`${item.sectionId}-${item.id}`}
-                  to={
-                    item.sourceType === 'youtube' && item.videoId
-                      ? `/video/${item.videoId}?title=${encodeURIComponent(item.title)}&section=${item.sectionId}&sectionTitle=${encodeURIComponent(item.sectionTitle)}`
-                      : `/section/${item.sectionId}`
-                  }
-                  className="search-result-row"
-                >
-                  <span className="search-result-title">{item.title}</span>
-                  <span className="search-result-meta">in {item.sectionTitle}</span>
-                </Link>
-              ))}
+              {itemResults.map((item) => {
+                const effective = parseVideoLink(item.url);
+                const to =
+                  effective.sourceType === 'youtube' && effective.videoId
+                    ? `/video/${effective.videoId}?title=${encodeURIComponent(item.title)}&section=${item.sectionId}&sectionTitle=${encodeURIComponent(item.sectionTitle)}`
+                    : `/section/${item.sectionId}`;
+                return (
+                  <Link key={`${item.sectionId}-${item.id}`} to={to} className="search-result-row">
+                    <span className="search-result-title">{item.title}</span>
+                    <span className="search-result-meta">in {item.sectionTitle}</span>
+                  </Link>
+                );
+              })}
             </>
           )}
 

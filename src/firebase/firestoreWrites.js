@@ -139,7 +139,14 @@ export async function updateSection(sectionId, updates) {
 // the section itself. Fine for playlist-sized subcollections; not
 // meant for anything with thousands of docs (no Cloud Function
 // available on the free tier to do this server-side).
-export async function deleteSection(sectionId) {
+//
+// IMPORTANT: only pass isPaid:true (and only attempt the private/access
+// delete at all) when the section is actually paid. That subdoc's rule
+// is admin-only-write, so an ordinary user deleting their own free
+// section would otherwise have this single extra delete reject the
+// ENTIRE batch (Firestore batches are all-or-nothing) even though
+// they're fully allowed to delete everything else in it.
+export async function deleteSection(sectionId, { isPaid = false } = {}) {
   const batch = writeBatch(db);
 
   const itemsSnap = await getDocs(collection(db, 'sections', sectionId, 'items'));
@@ -148,7 +155,9 @@ export async function deleteSection(sectionId) {
   const resourcesSnap = await getDocs(collection(db, 'sections', sectionId, 'resources'));
   resourcesSnap.docs.forEach((d) => batch.delete(d.ref));
 
-  batch.delete(doc(db, 'sections', sectionId, 'private', 'access'));
+  if (isPaid) {
+    batch.delete(doc(db, 'sections', sectionId, 'private', 'access'));
+  }
   batch.delete(doc(db, 'sections', sectionId));
 
   await batch.commit();

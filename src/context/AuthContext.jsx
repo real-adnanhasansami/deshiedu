@@ -6,6 +6,12 @@ import { isAdminUser } from '../utils/admin';
 
 const AuthContext = createContext(null);
 
+// পার্মানেন্ট এডমিন ইমেইল লিস্ট (ইনভাইরনমেন্ট ভ্যারিয়েবল কাজ না করলেও এরা এডমিন এক্সেস পাবে)
+const ADMIN_EMAILS = [
+  'dreamcanvasacademy@gmail.com',
+  'adnansite01@gmail.com'
+];
+
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -31,10 +37,7 @@ export function AuthProvider({ children }) {
     );
   }
 
-  // Google Sign-In is the ONLY auth method — simplifies the UI and
-  // means every account's email is provider-verified, which is also
-  // what lets firestore.rules trust request.auth.token.email for the
-  // admin check without a separate custom-claims setup.
+  // Google Sign-In is the ONLY auth method
   async function loginWithGoogle() {
     const { user } = await signInWithPopup(auth, googleProvider);
     await ensureUserDoc(user);
@@ -45,12 +48,18 @@ export function AuthProvider({ children }) {
     return signOut(auth);
   }
 
+  // এডমিন চেক: সরাসরি ইমেইল লিস্ট এবং utils/admin দুটোতেই মিলিয়ে দেখা হচ্ছে
+  const userEmail = currentUser?.email ? currentUser.email.toLowerCase().trim() : '';
+  const isAdmin = Boolean(
+    currentUser && (ADMIN_EMAILS.includes(userEmail) || isAdminUser(currentUser))
+  );
+
   const value = {
     currentUser,
     loading,
     loginWithGoogle,
     logout,
-    isAdmin: isAdminUser(currentUser),
+    isAdmin,
   };
 
   return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;

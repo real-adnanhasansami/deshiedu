@@ -1,13 +1,29 @@
-// The admin emails are set via env (comma-separated if multiple).
-// The SAME addresses must also be set inside firestore.rules
-// (e.g. dreamcanvasacademy@gmail.com and adnansite01@gmail.com).
+// Admin emails are set via env for the client-side UI check, as a
+// comma-separated list (so you can have more than one admin account
+// without editing code). The SAME set must also be hardcoded into
+// firestore.rules' isAdmin() function — rules files can't read .env —
+// so if you add/remove an email, change both places, or admin writes
+// will fail against the database even though the UI shows the Admin
+// link (or vice versa).
 
-const ADMIN_EMAILS_RAW = import.meta.env.VITE_ADMIN_EMAIL || 'dreamcanvasacademy@gmail.com,adnansite01@gmail.com';
+const RAW_ADMIN_EMAILS = import.meta.env.VITE_ADMIN_EMAILS || import.meta.env.VITE_ADMIN_EMAIL || '';
 
-// Split the comma-separated email list and trim any extra spaces
-export const ADMIN_EMAILS = ADMIN_EMAILS_RAW.split(',').map((e) => e.trim().toLowerCase());
+export const ADMIN_EMAILS = RAW_ADMIN_EMAILS.split(',')
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+if (ADMIN_EMAILS.length === 0) {
+  // Loud on purpose: a missing VITE_ADMIN_EMAILS is the single most
+  // common reason "the admin checkbox/panel doesn't show up even
+  // though I'm signed in with the right email" — and Vite bakes this
+  // value in at BUILD time, so setting it in Vercel's dashboard alone
+  // isn't enough; the site needs a fresh deploy afterward too.
+  console.warn(
+    '[DeshiEdu] VITE_ADMIN_EMAILS is not set — admin-only features (paid courses, /admin) will stay hidden for everyone. Set it in .env (and in Vercel + redeploy for production), matching the emails hardcoded in firestore.rules.'
+  );
+}
 
 export function isAdminUser(user) {
-  if (!user?.email) return false;
-  return ADMIN_EMAILS.includes(user.email.toLowerCase());
+  if (!user?.email || ADMIN_EMAILS.length === 0) return false;
+  return ADMIN_EMAILS.includes(user.email.trim().toLowerCase());
 }

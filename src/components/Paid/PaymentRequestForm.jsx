@@ -49,7 +49,9 @@ export default function PaymentRequestForm({ courseTitle, onBack }) {
     if (!validate()) return;
     const subject = encodeURIComponent(`DeshiEdu access request — ${courseTitle}`);
     const body = encodeURIComponent(buildMessage());
-    window.location.href = `mailto:${ADMIN_EMAIL_INBOX}?subject=${subject}&body=${body}`;
+    
+    // mailto: এর বদলে সরাসরি Gmail ওয়েব কম্পোজ লিংক
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&to=${ADMIN_EMAIL_INBOX}&su=${subject}&body=${body}`, '_blank');
   }
 
   function handleWhatsApp() {

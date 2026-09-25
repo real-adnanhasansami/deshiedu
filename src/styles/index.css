@@ -545,6 +545,35 @@ a {
   color: inherit;
 }
 
+.roadmap-thumb {
+  width: 64px;
+  height: 36px;
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-input);
+  font-size: 1.1rem;
+}
+
+.roadmap-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.roadmap-playlist-badge {
+  margin-left: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+}
+
 .roadmap-index {
   color: var(--text-subtle);
   font-weight: 700;

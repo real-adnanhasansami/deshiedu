@@ -16,15 +16,16 @@ function guessFileType(url) {
 
 // Cloudinary upload isn't built yet, so this contributes a *link* to a
 // file (or any resource page) rather than uploading one directly.
+// Admin-only, same reasoning as AddItemForm — see its comment.
 export default function AddResourceForm({ sectionId, onAdded }) {
-  const { currentUser } = useAuth();
+  const { currentUser, isAdmin } = useAuth();
   const [title, setTitle] = useState('');
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  if (!currentUser) {
-    return <p className="empty-state">Sign in to add a resource.</p>;
+  if (!isAdmin || !currentUser) {
+    return null;
   }
 
   async function handleSubmit(e) {

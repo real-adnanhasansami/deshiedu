@@ -41,7 +41,7 @@ export default function AdminPage() {
       return;
     }
     try {
-      await deleteSection(section.id);
+      await deleteSection(section.id, { isPaid: section.isPaid });
       load();
     } catch (err) {
       console.error('Failed to delete section:', err);

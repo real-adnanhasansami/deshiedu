@@ -102,7 +102,7 @@ export default function SectionModal({ open, onClose, onSaved, section = null })
 
     let preparedItems = [];
     try {
-      if (!isEdit) preparedItems = parseLinks();
+      if (!isEdit && isAdmin) preparedItems = parseLinks();
     } catch (err) {
       setError(err.message);
       return;
@@ -199,7 +199,7 @@ export default function SectionModal({ open, onClose, onSaved, section = null })
           />
         </label>
 
-        {!isEdit && (
+        {!isEdit && isAdmin && (
           <div className="modal-links">
             <p className="modal-links-label">Roadmap links (optional — you can add these later too)</p>
             {links.map((link, index) => {
