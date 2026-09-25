@@ -29,7 +29,7 @@ const PROGRESS_SAVE_INTERVAL_MS = 8000;
 
 export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, onProgress }) {
   const containerRef = useRef(null);
-  const playerWrapperRef = useRef(null); // ফুলস্ক্রিন করার জন্য পুরো র‍্যাপার রিফ
+  const playerWrapperRef = useRef(null);
   const playerRef = useRef(null);
   const progressTimerRef = useRef(null);
   const resumeSecondsRef = useRef(resumeSeconds);
@@ -37,7 +37,7 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
   
   const [loaded, setLoaded] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  const [playerSize, setPlayerSize] = useState('standard'); // 'small', 'standard', 'wide'
+  const [playerSize, setPlayerSize] = useState('standard');
 
   resumeSecondsRef.current = resumeSeconds;
   onProgressRef.current = onProgress;
@@ -121,7 +121,6 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
     setPlayerSize(size);
 
     if (size === 'wide') {
-      // Wide ক্লিক করলে পুরো প্লেয়ার র‍্যাপার ব্রাউজারের ফুলস্ক্রিনে চলে যাবে
       if (playerWrapperRef.current) {
         if (playerWrapperRef.current.requestFullscreen) {
           playerWrapperRef.current.requestFullscreen();
@@ -132,7 +131,6 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
         }
       }
     } else {
-      // যদি আগে থেকেই ফুলস্ক্রিন করা থাকে এবং অন্য সাইজ সিলেক্ট করা হয়, তবে ফুলস্ক্রিন থেকে বের হয়ে আসবে
       if (document.fullscreenElement) {
         document.exitFullscreen?.();
       }
@@ -147,7 +145,7 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
   
   const getSizeStyles = () => {
     if (playerSize === 'small') return { width: '65%', margin: '0 auto' };
-    return { width: '100%' }; // Standard
+    return { width: '100%' };
   };
 
   return (
@@ -158,13 +156,13 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
         flexDirection: 'column', 
         gap: '10px', 
         width: '100%',
-        background: playerSize === 'wide' ? '#000' : 'transparent', // ফুলস্ক্রিন মোডে ব্যাকগ্রাউন্ড ব্ল্যাক রাখবে
+        background: playerSize === 'wide' ? '#000' : 'transparent',
         padding: playerSize === 'wide' ? '20px' : '0',
         justifyContent: 'center'
       }}
     >
       
-      {/* Video Container with anti-click overlay */}
+      {/* Video Container with anti-click overlay and custom play/pause */}
       <div 
         className={`video-wrapper ${loaded ? 'is-loaded' : 'is-loading'}`} 
         onContextMenu={(e) => e.preventDefault()}
@@ -173,21 +171,28 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
         {!loaded && <div className="video-loading">Loading video…</div>}
         <div ref={containerRef} />
         
-        {/* Transparent Shield to block direct YouTube redirection */}
+        {/* Transparent Shield: blocks YouTube redirects AND handles Play/Pause clicks */}
         <div 
           style={{
             position: 'absolute',
             top: 0,
             left: 0,
             width: '100%',
-            height: '80%', 
+            height: '100%', 
             pointerEvents: 'auto',
             background: 'transparent',
-            zIndex: 10
+            zIndex: 10,
+            cursor: 'pointer'
           }} 
-          onClick={(e) => {
-            e.stopPropagation();
-            // চাইলে এখানে ক্লিক করলে ভিডিও প্লে/পজ টগল করার লজিকও দিতে পারিস, আপাতত ইউটিউবে যাওয়া আটকাবে
+          onClick={() => {
+            if (playerRef.current && typeof playerRef.current.getPlayerState === 'function') {
+              const state = playerRef.current.getPlayerState();
+              if (state === PLAYING) {
+                playerRef.current.pauseVideo();
+              } else {
+                playerRef.current.playVideo();
+              }
+            }
           }}
         />
       </div>
