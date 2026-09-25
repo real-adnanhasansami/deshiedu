@@ -1,21 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
 // Distraction-free YouTube embed via the real IFrame Player API
-// (youtube-nocookie.com, rel=0, modestbranding, annotations off) —
-// upgraded from a plain <iframe src> so we can read/seek playback
-// position for resume-watching. YouTube no longer allows fully
-// suppressing end-of-video suggestions from the *same* channel;
-// this is as close to distraction-free as the embed API allows.
-//
-// Also plays whole playlists: pass `playlistId` instead of
-// `youtubeId` and the player loads it via playerVars.listType/list.
-// Resume-by-timestamp is skipped in playlist mode — a single saved
-// timestamp doesn't map to "which video in the playlist" meaningfully.
-//
-// TODO (later task): support non-YouTube sourceTypes (Udemy/Coursera
-// don't offer embeddable players, so those stay external links from
-// RoadmapItem — this component only ever receives YouTube ids).
-
 let apiLoadPromise = null;
 function loadYouTubeIframeAPI() {
   if (apiLoadPromise) return apiLoadPromise;
@@ -40,7 +25,6 @@ function loadYouTubeIframeAPI() {
 }
 
 const PLAYING = 1;
-// Only resume-seek past this many seconds — jumping to :03 isn't worth it.
 const MIN_RESUME_SECONDS = 5;
 const PROGRESS_SAVE_INTERVAL_MS = 8000;
 
@@ -50,7 +34,12 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
   const progressTimerRef = useRef(null);
   const resumeSecondsRef = useRef(resumeSeconds);
   const onProgressRef = useRef(onProgress);
+  
   const [loaded, setLoaded] = useState(false);
+  
+  // Custom Controls State
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [playerSize, setPlayerSize] = useState('standard'); // 'small', 'standard', 'wide'
 
   resumeSecondsRef.current = resumeSeconds;
   onProgressRef.current = onProgress;
@@ -65,15 +54,13 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !containerRef.current) return;
 
-      playerRef.current = new YT.Player(containerRef.current, {
-        videoId: youtubeId || undefined,
+      const playerConfig = {
         host: 'https://www.youtube-nocookie.com',
         playerVars: {
           rel: 0,
           modestbranding: 1,
           iv_load_policy: 3,
           playsinline: 1,
-          ...(playlistId ? { listType: 'playlist', list: playlistId } : {}),
         },
         events: {
           onReady: (event) => {
@@ -84,7 +71,7 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
             }
           },
           onStateChange: (event) => {
-            if (playlistId) return; // no meaningful single-video progress to save
+            if (playlistId) return;
             clearInterval(progressTimerRef.current);
             if (event.data === PLAYING) {
               progressTimerRef.current = setInterval(() => {
@@ -97,7 +84,18 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
             }
           },
         },
-      });
+      };
+
+      if (youtubeId) {
+        playerConfig.videoId = youtubeId;
+      }
+
+      if (playlistId) {
+        playerConfig.playerVars.listType = 'playlist';
+        playerConfig.playerVars.list = playlistId;
+      }
+
+      playerRef.current = new YT.Player(containerRef.current, playerConfig);
     });
 
     return () => {
@@ -106,23 +104,110 @@ export default function VideoPlayer({ youtubeId, playlistId, resumeSeconds = 0, 
       try {
         playerRef.current?.destroy?.();
       } catch {
-        // player may already be gone if the API never finished loading
+        // player may already be gone
       }
       playerRef.current = null;
     };
-    // Only re-create the player when the video/playlist itself changes —
-    // resumeSeconds/onProgress are read via refs/closures above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [youtubeId, playlistId]);
+
+  // Speed change handler
+  const handleSpeedChange = (rate) => {
+    setPlaybackRate(rate);
+    if (playerRef.current && typeof playerRef.current.setPlaybackRate === 'function') {
+      playerRef.current.setPlaybackRate(rate);
+    }
+  };
 
   if (!hasSomethingToPlay) {
     return <div className="video-wrapper empty">No video selected</div>;
   }
 
+  const speedOptions = [0.5, 0.75, 1, 1.25, 1.5, 2];
+  
+  // Size mapping logic
+  const getSizeStyles = () => {
+    if (playerSize === 'small') return { width: '70%', margin: '0 auto' };
+    if (playerSize === 'wide') return { width: '100%', minWidth: '800px', margin: '0 auto' }; // Wide mode
+    return { width: '100%' }; // Standard
+  };
+
   return (
-    <div className={`video-wrapper ${loaded ? 'is-loaded' : 'is-loading'}`}>
-      {!loaded && <div className="video-loading">Loading video…</div>}
-      <div ref={containerRef} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+      
+      {/* Video Container */}
+      <div 
+        className={`video-wrapper ${loaded ? 'is-loaded' : 'is-loading'}`} 
+        onContextMenu={(e) => e.preventDefault()} // Right-click block
+        style={{ ...getSizeStyles(), transition: 'all 0.3s ease' }}
+      >
+        {!loaded && <div className="video-loading">Loading video…</div>}
+        <div ref={containerRef} />
+      </div>
+
+      {/* Custom Controls Panel */}
+      {loaded && (
+        <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          background: '#0f172a', 
+          padding: '10px 15px', 
+          borderRadius: '8px',
+          gap: '15px'
+        }}>
+          
+          {/* Speed Controls */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Speed:</span>
+            {speedOptions.map((rate) => (
+              <button
+                key={rate}
+                onClick={() => handleSpeedChange(rate)}
+                style={{
+                  background: playbackRate === rate ? '#0ea5e9' : '#1e293b',
+                  color: playbackRate === rate ? '#fff' : '#cbd5e1',
+                  border: '1px solid',
+                  borderColor: playbackRate === rate ? '#0ea5e9' : '#334155',
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {rate}x
+              </button>
+            ))}
+          </div>
+
+          {/* Size Controls */}
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ color: '#94a3b8', fontSize: '13px', fontWeight: '500' }}>Size:</span>
+            {['small', 'standard', 'wide'].map((size) => (
+              <button
+                key={size}
+                onClick={() => setPlayerSize(size)}
+                style={{
+                  background: playerSize === size ? '#0ea5e9' : '#1e293b',
+                  color: playerSize === size ? '#fff' : '#cbd5e1',
+                  border: '1px solid',
+                  borderColor: playerSize === size ? '#0ea5e9' : '#334155',
+                  padding: '4px 10px',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  textTransform: 'capitalize',
+                  transition: 'all 0.2s'
+                }}
+              >
+                {size}
+              </button>
+            ))}
+          </div>
+          
+        </div>
+      )}
     </div>
   );
 }
